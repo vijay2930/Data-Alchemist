@@ -1,350 +1,25 @@
 'use client';
 
-import {useState, useMemo, useEffect, useId} from 'react';
+import {useState, useMemo, useEffect} from 'react';
 import Papa from 'papaparse';
 import JSZip from 'jszip';
-import { UploadCloud, Download, CheckCircle, XCircle, ChevronUp, ChevronDown } from 'lucide-react'; // Import Lucide icons
-
-// Placeholder components and utils for a complete example
-// In a real application, you would import these from their files
-
-/**
- * A reusable file upload component with drag-and-drop support.
- * @param onFileAccepted A callback function that is called with the accepted file.
- */
-const FileUploader = ({ onFileAccepted }: { onFileAccepted: (file: File) => void }) => {
-    // Generate a unique ID for this instance of the component
-    const uniqueId = useId();
-
-    return (
-        <label
-            htmlFor={`fileInput-${uniqueId}`} // Use the unique ID here
-            className="flex flex-col items-center justify-center p-6 border-2 border-dashed border-gray-300 rounded-xl text-center cursor-pointer hover:border-blue-500 hover:bg-blue-50 transition-all duration-300 transform hover:scale-105 shadow-sm"
-            onDrop={(e) => {
-                e.preventDefault();
-                const file = e.dataTransfer.files && e.dataTransfer.files[0];
-                if (file) onFileAccepted(file);
-            }}
-            onDragOver={(e) => e.preventDefault()}
-        >
-            {/* Lucide-react is assumed to be available for icons */}
-            <UploadCloud className="mx-auto h-12 w-12 text-blue-400 mb-3 animate-bounce-slow" />
-            <input
-                type="file"
-                className="hidden"
-                id={`fileInput-${uniqueId}`} // Use the unique ID here
-                onChange={(e) => {
-                    const file = e.target.files && e.target.files[0];
-                    if (file) onFileAccepted(file);
-                }}
-                accept=".csv, .xlsx"
-            />
-            <span className="text-blue-700 font-semibold text-lg">Click to upload or drag & drop</span>
-            <span className="text-gray-500 text-sm mt-1">.csv, .xlsx files accepted</span>
-        </label>
-    );
-};
-
-/**
- * Parses a CSV file using PapaParse.
- * @param file The CSV file to parse.
- * @returns A promise that resolves with the parsed data.
- */
-const parseCSV = async (file: File): Promise<any[]> => {
-    return new Promise((resolve, reject) => {
-        Papa.parse(file, {
-            header: true,
-            skipEmptyLines: true,
-            complete: (results) => resolve(results.data),
-            error: (error) => reject(error),
-        });
-    });
-};
-
-/**
- * Parses an XLSX file (placeholder - typically uses a library like 'xlsx').
- * @param file The XLSX file to parse.
- * @returns A promise that resolves with the parsed data (currently empty).
- */
-const parseXLSX = async (file: File): Promise<any[]> => {
-    // This is a simplified placeholder. In a real app, you'd use a library like 'xlsx'
-    console.warn("XLSX parsing is a placeholder and not fully implemented.");
-    return new Promise((resolve) => resolve([]));
-};
-
-// --- Validation Interfaces and Functions ---
-
-type ValidationError = { rowIndex: number; field: string; message: string };
-
-type EntityType = 'clients' | 'workers' | 'tasks';
-type RuleType =
-    | 'coRun'
-    | 'slotRestriction'
-    | 'loadLimit'
-    | 'phaseWindow'
-    | 'patternMatch'
-    | 'precedenceOverride';
-
-type Rule =
-    | { type: 'coRun'; tasks: string[] }
-    | { type: 'slotRestriction'; group: string; minCommonSlots: number }
-    | { type: 'loadLimit'; workerGroup: string; maxSlotsPerPhase: number }
-    | { type: 'phaseWindow'; taskId: string; allowedPhases: number[] }
-    | { type: 'patternMatch'; regex: string; template: string; params: Record<string, any> }
-    | { type: 'precedenceOverride'; priorityOrder: string[] };
-
-interface Weights {
-    clientPriority: number;
-    fairness: number;
-    fulfillment: number;
-    idleTime: number;
-    overloadAvoidance: number;
-}
-
-const presetProfiles: Record<string, Weights> = {
-    Balanced: { clientPriority: 50, fairness: 50, fulfillment: 50, idleTime: 50, overloadAvoidance: 50 },
-    'Max Fulfillment': { clientPriority: 70, fairness: 40, fulfillment: 100, idleTime: 30, overloadAvoidance: 50 },
-    'Light Workload': { clientPriority: 40, fairness: 60, fulfillment: 50, idleTime: 80, overloadAvoidance: 70 },
-};
-
-/**
- * Validates client data.
- * @param data Array of client objects.
- * @returns ValidationResult with errors and detailed errors.
- */
-const validateClients = (data: any[]) => {
-    const errors: string[] = [];
-    const detailed: ValidationError[] = [];
-    data.forEach((row, index) => {
-        if (!row.ClientID || String(row.ClientID).trim() === '') {
-            const message = 'ClientID is required.';
-            errors.push(`Client Row ${index + 1}: ${message}`);
-            detailed.push({ rowIndex: index, field: 'ClientID', message });
-        }
-        // Add more specific client validations here if needed
-        if (row.PriorityLevel && (isNaN(Number(row.PriorityLevel)) || Number(row.PriorityLevel) < 1 || Number(row.PriorityLevel) > 5)) {
-            const message = 'PriorityLevel must be between 1 and 5.';
-            errors.push(`Client Row ${index + 1}: ${message}`);
-            detailed.push({ rowIndex: index, field: 'PriorityLevel', message });
-        }
-    });
-    return { errors, detailed };
-};
-
-/**
- * Validates worker data.
- * @param data Array of worker objects.
- * @returns ValidationResult with errors and detailed errors.
- */
-const validateWorkers = (data: any[]) => {
-    const errors: string[] = [];
-    const detailed: ValidationError[] = [];
-    data.forEach((row, index) => {
-        if (!row.WorkerID || String(row.WorkerID).trim() === '') {
-            const message = 'WorkerID is required.';
-            errors.push(`Worker Row ${index + 1}: ${message}`);
-            detailed.push({ rowIndex: index, field: 'WorkerID', message });
-        }
-        // Add more specific worker validations here if needed
-        if (row.MaxLoadPerPhase && (isNaN(Number(row.MaxLoadPerPhase)) || Number(row.MaxLoadPerPhase) < 1)) {
-            const message = 'MaxLoadPerPhase must be a number >= 1.';
-            errors.push(`Worker Row ${index + 1}: ${message}`);
-            detailed.push({ rowIndex: index, field: 'MaxLoadPerPhase', message });
-        }
-    });
-    return { errors, detailed };
-};
-
-/**
- * Validates task data.
- * @param data Array of task objects.
- * @returns ValidationResult with errors and detailed errors.
- */
-const validateTasks = (data: any[]) => {
-    const errors: string[] = [];
-    const detailed: ValidationError[] = [];
-    data.forEach((row, index) => {
-        if (!row.TaskID || String(row.TaskID).trim() === '') {
-            const message = 'TaskID is required.';
-            errors.push(`Task Row ${index + 1}: ${message}`);
-            detailed.push({ rowIndex: index, field: 'TaskID', message });
-        }
-        // Add more specific task validations here if needed
-        if (row.Duration && (isNaN(Number(row.Duration)) || Number(row.Duration) < 1)) {
-            const message = 'Duration must be a number >= 1.';
-            errors.push(`Task Row ${index + 1}: ${message}`);
-            detailed.push({ rowIndex: index, field: 'Duration', message });
-        }
-    });
-    return { errors, detailed };
-};
-
-/**
- * Runs cross-entity validations requiring multiple datasets.
- * @param clients Parsed clients data array.
- * @param workers Parsed workers data array.
- * @param tasks Parsed tasks data array.
- * @returns CrossValidationResult with errors and detailed errors.
- */
-const crossValidateAll = (clients: any[], workers: any[], tasks: any[]) => {
-    const errors: string[] = [];
-    const detailed: ValidationError[] = [];
-
-    const clientIDs = new Set(clients.map(c => String(c.ClientID).trim()).filter(Boolean));
-    const workerIDs = new Set(workers.map(w => String(w.WorkerID).trim()).filter(Boolean));
-    const taskIDs = new Set(tasks.map(t => String(t.TaskID).trim()).filter(Boolean));
-
-    // Cross-validation for tasks: Check if ClientID and WorkerID in tasks exist in respective datasets
-    tasks.forEach((task, index) => {
-        if (task.ClientID && String(task.ClientID).trim() !== '' && !clientIDs.has(String(task.ClientID).trim())) {
-            const message = `ClientID "${task.ClientID}" not found in Clients data.`;
-            errors.push(`Task Row ${index + 1}: ${message}`);
-            detailed.push({ rowIndex: index, field: 'ClientID', message });
-        }
-        if (task.WorkerID && String(task.WorkerID).trim() !== '' && !workerIDs.has(String(task.WorkerID).trim())) {
-            const message = `WorkerID "${task.WorkerID}" not found in Workers data.`;
-            errors.push(`Task Row ${index + 1}: ${message}`);
-            detailed.push({ rowIndex: index, field: 'WorkerID', message });
-        }
-        if (task.ParentTaskID && String(task.ParentTaskID).trim() !== '' && !taskIDs.has(String(task.ParentTaskID).trim())) {
-            const message = `ParentTaskID "${task.ParentTaskID}" not found in Tasks data.`;
-            errors.push(`Task Row ${index + 1}: ${message}`);
-            detailed.push({ rowIndex: index, field: 'ParentTaskID', message });
-        }
-    });
-
-    // Example: Check if all RequestedTaskIDs in clients exist in tasks
-    clients.forEach((client, index) => {
-        const requestedTaskIDs = (String(client.RequestedTaskIDs || '').split(',')).map((id: string) => id.trim()).filter(Boolean);
-        requestedTaskIDs.forEach(reqID => {
-            if (!taskIDs.has(reqID)) {
-                const message = `RequestedTaskID "${reqID}" not found in Tasks data.`;
-                errors.push(`Client Row ${index + 1}: ${message}`);
-                detailed.push({ rowIndex: index, field: 'RequestedTaskIDs', message });
-            }
-        });
-    });
-
-    return { errors: [...new Set(errors)], detailed }; // Use Set to remove duplicate summary errors
-};
+import {  Download, CheckCircle, XCircle, ChevronUp, ChevronDown } from 'lucide-react';
+import FileUploader from "@/app/components/FileUploader";
+import {ValidationError,EntityType,RuleType,Rule,Weights,presetProfiles} from "@/app/utils/types";
+import parseCSV from "@/app/utils/parseCSV";
+import parseXLSX from "@/app/utils/parseXLSX";
+import validateClients from "@/app/utils/validateClients";
+import validateWorkers from "@/app/utils/validateWorkers";
+import validateTasks from "@/app/utils/validateTasks";
+import crossValidateAll from "@/app/utils/crossValidateAll";
+import DataGrid from "@/app/components/DataGrid";
 
 
-// Reusable DataGrid component for each view
-function DataGrid({
-                      data,
-                      errors,
-                      cellErrors,
-                      filters,
-                      setFilters,
-                      sortConfig,
-                      setSortConfig,
-                      updateCell,
-                      activeView,
-                  }: {
-    data: any[];
-    errors: string[];
-    cellErrors: ValidationError[];
-    filters: Record<string, string>;
-    setFilters: (filters: Record<string, string>) => void;
-    sortConfig: { key: string; direction: 'asc' | 'desc' } | null;
-    setSortConfig: (config: { key: string; direction: 'asc' | 'desc' } | null) => void;
-    updateCell: (rowIndex: number, field: string, value: any) => void;
-    activeView: EntityType;
-}) {
-    const filteredAndSortedData = useMemo(() => {
-        let filtered = data.filter((row) =>
-            Object.entries(filters).every(([col, val]) => !val || String(row[col] ?? '').toLowerCase().includes(val.toLowerCase()))
-        );
-        if (sortConfig) {
-            filtered = [...filtered].sort(
-                (a, b) =>
-                    String(a[sortConfig.key] ?? '').localeCompare(String(b[sortConfig.key] ?? ''), undefined, { sensitivity: 'base' }) *
-                    (sortConfig.direction === 'asc' ? 1 : -1)
-            );
-        }
-        return filtered;
-    }, [data, filters, sortConfig]);
-
-    if (data.length === 0) {
-        return <p className="text-center text-gray-500 mt-4 text-lg">No data uploaded for this view. Upload a file to see the grid.</p>;
-    }
-
-    const columns = Object.keys(filteredAndSortedData[0] || {});
-
-    return (
-        <div className="overflow-x-auto relative shadow-md rounded-xl border border-gray-200">
-            <table className="min-w-full divide-y divide-gray-200">
-                <thead className="bg-gray-100 sticky top-0 z-10 shadow-sm">
-                <tr>
-                    {columns.map((k) => (
-                        <th
-                            key={k}
-                            onClick={() => setSortConfig({ key: k, direction: sortConfig?.direction === 'asc' ? 'desc' : 'asc' })}
-                            className="px-6 py-4 text-left text-sm font-semibold text-gray-700 uppercase tracking-wider cursor-pointer select-none transition-colors duration-200 hover:bg-gray-200"
-                        >
-                            <div className="flex items-center">
-                                {k}
-                                {sortConfig?.key === k && (
-                                    <span className="ml-2 text-gray-900">
-                                        {sortConfig.direction === 'asc' ? <ChevronUp size={16} /> : <ChevronDown size={16} />}
-                                    </span>
-                                )}
-                            </div>
-                        </th>
-                    ))}
-                </tr>
-                <tr className="bg-white border-b border-gray-200">
-                    {columns.map((k) => (
-                        <th key={k} className="px-6 py-3">
-                            <input
-                                value={filters[k] ?? ''}
-                                onChange={(e) => setFilters({ ...filters, [k]: e.target.value })}
-                                className="w-full border-gray-300 rounded-md shadow-sm text-sm p-2 focus:ring-blue-400 focus:border-blue-400 transition-all duration-200"
-                                placeholder={`Filter ${k}`}
-                            />
-                        </th>
-                    ))}
-                </tr>
-                </thead>
-                <tbody className="bg-white divide-y divide-gray-100">
-                {filteredAndSortedData.map((row, ri) => {
-                    // Find the original index of the row to match errors correctly
-                    // This is necessary because filteredAndSortedData might have a different order/subset
-                    const originalIndex = data.indexOf(row);
-                    const isErrorRow = errors.some((err) => err.includes(`Row ${originalIndex + 1}`));
-                    return (
-                        <tr key={ri} className={isErrorRow ? 'bg-red-50 hover:bg-red-100 transition-colors duration-200' : 'odd:bg-gray-50 even:bg-white hover:bg-gray-100 transition-colors duration-200'}>
-                            {columns.map((field) => {
-                                const hasCellError = cellErrors.some((e) => e.rowIndex === originalIndex && e.field === field);
-                                const msg = cellErrors.find((e) => e.rowIndex === originalIndex && e.field === field)?.message || '';
-                                return (
-                                    <td
-                                        key={field}
-                                        title={msg}
-                                        className={`px-6 py-3 whitespace-nowrap text-base ${hasCellError ? 'bg-yellow-100 text-yellow-800' : 'text-gray-900'}`}
-                                    >
-                                        <input
-                                            value={row[field] || ''}
-                                            onChange={(e) => updateCell(originalIndex, field, e.target.value)}
-                                            className={`w-full border rounded-md shadow-sm text-sm p-1.5 ${hasCellError ? 'border-yellow-500 focus:ring-yellow-500' : 'border-gray-300 focus:ring-blue-400'} focus:border-blue-400 transition-all duration-200`}
-                                        />
-                                    </td>
-                                );
-                            })}
-                        </tr>
-                    );
-                })}
-                </tbody>
-            </table>
-        </div>
-    );
-}
 
 export default function DataRulesPrioritiesPage() {
     const [tab, setTab] = useState<'data' | 'rules' | 'priorities'>('data');
     const [isLoading, setIsLoading] = useState(false);
 
-    // Dataset State
     const [clients, setClients] = useState<any[]>([]);
     const [workers, setWorkers] = useState<any[]>([]);
     const [tasks, setTasks] = useState<any[]>([]);
@@ -360,14 +35,12 @@ export default function DataRulesPrioritiesPage() {
 
     const [activeView, setActiveView] = useState<EntityType>('clients');
 
-    // View-specific states
     const [viewStates, setViewStates] = useState<Record<EntityType, { filters: Record<string, string>; sortConfig: { key: string; direction: 'asc' | 'desc' } | null }>>({
         clients: { filters: {}, sortConfig: null },
         workers: { filters: {}, sortConfig: null },
         tasks: { filters: {}, sortConfig: null },
     });
 
-    // Rules State
     const [rules, setRules] = useState<Rule[]>([]);
     const [ruleType, setRuleType] = useState<RuleType>('coRun');
     const [selectedTasks, setSelectedTasks] = useState<string[]>([]);
@@ -381,7 +54,6 @@ export default function DataRulesPrioritiesPage() {
     const [template, setTemplate] = useState('');
     const [precedenceOrder, setPrecedenceOrder] = useState('');
 
-    // Weights State
     const [weights, setWeights] = useState<Weights>(presetProfiles.Balanced);
 
     /**
@@ -396,9 +68,9 @@ export default function DataRulesPrioritiesPage() {
         setCrossCellErrors(cross.detailed);
     };
     /**
-     * Handles file acceptance and triggers validation for the specific entity type.
+     * Handles file acceptance and triggers validation for the specific entity utils.
      * @param file The accepted File object.
-     * @param type The entity type ('clients', 'workers', 'tasks').
+     * @param type The entity utils ('clients', 'workers', 'tasks').
      */
     const handleFile = async (file: File, type: EntityType) => {
         setIsLoading(true);
@@ -406,10 +78,8 @@ export default function DataRulesPrioritiesPage() {
         try {
             if (file.name.endsWith('.csv')) parsed = await parseCSV(file);
             else if (file.name.endsWith('.xlsx')) parsed = await parseXLSX(file);
-            else throw new Error('Unsupported file type');
+            else throw new Error('Unsupported file utils');
         } catch (error) {
-            // Using a simple alert for file parsing errors for demonstration.
-            // In a real app, consider a more user-friendly modal or toast.
             alert('File parsing failed: ' + (error as Error).message);
             setIsLoading(false);
             return;
@@ -430,16 +100,15 @@ export default function DataRulesPrioritiesPage() {
         console.log("type",type)
         if (type === 'clients') {
             runValidation(parsed, validateClients, setClients, setClientsErrors, setClientsCellErrors);
-            runCrossValidation(parsed, workers, tasks); // Re-run cross-validation with new client data
+            runCrossValidation(parsed, workers, tasks);
         } else if (type === 'workers') {
             runValidation(parsed, validateWorkers, setWorkers, setWorkersErrors, setWorkersCellErrors);
-            runCrossValidation(clients, parsed, tasks); // Re-run cross-validation with new worker data
+            runCrossValidation(clients, parsed, tasks);
         } else if (type === 'tasks') {
             runValidation(parsed, validateTasks, setTasks, setTasksErrors, setTasksCellErrors);
-            runCrossValidation(clients, workers, parsed); // Re-run cross-validation with new task data
+            runCrossValidation(clients, workers, parsed);
         }
 
-        // Set view-specific filters based on the new data's columns
         if (parsed.length > 0 && parsed[0]) {
             setViewStates((prev) => ({
                 ...prev,
@@ -450,7 +119,7 @@ export default function DataRulesPrioritiesPage() {
 
     /**
      * Updates a cell in the active data view and re-runs validation.
-     * @param type The entity type ('clients', 'workers', 'tasks').
+     * @param type The entity utils ('clients', 'workers', 'tasks').
      * @param rowIndex The 0-based index of the row.
      * @param field The field (column name) to update.
      * @param value The new value for the cell.
@@ -458,7 +127,6 @@ export default function DataRulesPrioritiesPage() {
     const updateCell = (type: EntityType, rowIndex: number, field: string, value: any) => {
         const updateAndValidate = (dataset: any[], validator: (data: any[]) => { errors: string[]; detailed: ValidationError[] }, setData: (data: any[]) => void, setErr: (err: string[]) => void, setCellErr: (err: ValidationError[]) => void) => {
             const updated = [...dataset];
-            // Ensure the row at rowIndex exists before attempting to update
             if (updated[rowIndex]) {
                 updated[rowIndex] = { ...updated[rowIndex], [field]: value };
             }
@@ -482,7 +150,6 @@ export default function DataRulesPrioritiesPage() {
         }
     };
 
-    // Effect to initialize filters for the active view when data is loaded or view changes
     useEffect(() => {
         const currentData = activeView === 'clients' ? clients : activeView === 'workers' ? workers : tasks;
         if (currentData.length > 0 && Object.keys(viewStates[activeView].filters).length === 0) {
@@ -493,21 +160,16 @@ export default function DataRulesPrioritiesPage() {
         }
     }, [activeView, clients, workers, tasks, viewStates]);
 
-    // Memoized current data, errors, and cell errors for the active view
     const currentData = activeView === 'clients' ? clients : activeView === 'workers' ? workers : tasks;
     const currentErrors = [
         ...(activeView === 'clients' ? clientsErrors : activeView === 'workers' ? workersErrors : tasksErrors),
-        // Filter crossErrors to only show those relevant to the current active view's entity type
         ...crossErrors.filter((e) => e.toLowerCase().includes(activeView.slice(0, -1).toLowerCase())),
     ];
     const currentCellErrors = [
         ...(activeView === 'clients' ? clientsCellErrors : activeView === 'workers' ? workersCellErrors : tasksCellErrors),
-        // Cross-cell errors don't typically need filtering by active view directly if they already specify row/field
-        // but ensuring they are included is important.
         ...crossCellErrors,
     ];
 
-    // Memoized filters and sort config for the active view
     const { filters: currentFilters, sortConfig: currentSortConfig } = useMemo(() => viewStates[activeView], [viewStates, activeView]);
 
     /**
@@ -541,7 +203,6 @@ export default function DataRulesPrioritiesPage() {
         if (!input) return [];
         const trimmed = input.trim();
 
-        // Handle JSON-like array string, e.g., "[1, 3, 5]"
         if (trimmed.startsWith('[') && trimmed.endsWith(']')) {
             try {
                 const parsed = JSON.parse(trimmed);
@@ -553,19 +214,17 @@ export default function DataRulesPrioritiesPage() {
             }
         }
 
-        // Handle range like "1-4"
         if (/^\d+\-\d+$/.test(trimmed)) {
             const [start, end] = trimmed.split('-').map(Number);
             if (isNaN(start) || isNaN(end) || start > end) return [];
             return Array.from({ length: end - start + 1 }, (_, i) => start + i);
         }
 
-        // Handle comma-separated, e.g., "2, 4, 5"
         return trimmed.split(',').map(s => parseInt(s.trim(), 10)).filter(n => !isNaN(n));
     };
 
     /**
-     * Adds a new rule based on the selected rule type and inputs.
+     * Adds a new rule based on the selected rule utils and inputs.
      */
     const addRule = () => {
         let newRule: Rule | null = null;
@@ -592,11 +251,10 @@ export default function DataRulesPrioritiesPage() {
                 if (order.length === 0) { alert('Enter priority order'); return; }
                 newRule = { type: 'precedenceOverride', priorityOrder: order }; break;
             default:
-                break; // Should not happen with valid ruleType
+                break;
         }
         if (newRule) {
             setRules((prev) => [...prev, newRule]);
-            // Reset rule builder form fields
             setSelectedTasks([]); setSlotGroup(''); setMinSlots(1); setWorkerGroup(''); setMaxLoad(1);
             setPhaseTask(''); setAllowedPhases(''); setRegex(''); setTemplate(''); setPrecedenceOrder('');
         }
@@ -619,7 +277,6 @@ export default function DataRulesPrioritiesPage() {
         const zip = new JSZip();
         const csvOpts = { header: true };
 
-        // Only add files if data exists
         if (clients.length > 0) zip.file('clients.csv', Papa.unparse(clients, csvOpts));
         if (workers.length > 0) zip.file('workers.csv', Papa.unparse(workers, csvOpts));
         if (tasks.length > 0) zip.file('tasks.csv', Papa.unparse(tasks, csvOpts));
@@ -632,7 +289,7 @@ export default function DataRulesPrioritiesPage() {
         link.href = URL.createObjectURL(blob);
         link.download = 'data-alchemist-export.zip';
         link.click();
-        URL.revokeObjectURL(link.href); // Clean up the object URL
+        URL.revokeObjectURL(link.href);
     };
 
     return (
