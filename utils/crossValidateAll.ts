@@ -28,7 +28,7 @@ export function crossValidateAll(
     // 1. Unknown references: RequestedTaskIDs not in tasks
     clients.forEach((c, cIdx) => {
         const reqTasks = (c.RequestedTaskIDs || '').split(',').map((t: string) => t.trim()).filter(Boolean);
-        reqTasks.forEach(rt => {
+        reqTasks.forEach((rt: string) => {
             if (!taskIDs.has(rt)) {
                 const msg = `Requested task "${rt}" not found in Tasks`;
                 errors.push(`Client Row ${cIdx + 1}: ${msg}`);
@@ -51,7 +51,7 @@ export function crossValidateAll(
     // 3. Skill coverage: every RequiredSkill in tasks covered by ≥ 1 worker
     tasks.forEach((t, tIdx) => {
         const reqSkills = (t.RequiredSkills || '').split(',').map((s: string) => s.trim()).filter(Boolean);
-        reqSkills.forEach(skill => {
+        reqSkills.forEach((skill: string) => {
             if (!workerSkills.has(skill)) {
                 const msg = `Required skill "${skill}" not covered by any worker`;
                 errors.push(`Task Row ${tIdx + 1}: ${msg}`);
@@ -65,7 +65,7 @@ export function crossValidateAll(
         const reqSkills = (t.RequiredSkills || '').split(',').map((s: string) => s.trim()).filter(Boolean);
         if (reqSkills.length > 0) {
             const qualifiedCount = workers.filter(w =>
-                reqSkills.every(skill => (w.Skills || '').split(',').map((s: string) => s.trim()).includes(skill))
+                reqSkills.every((skill: string) => (w.Skills || '').split(',').map((s: string) => s.trim()).includes(skill))
             ).length;
             if (Number(t.MaxConcurrent) > qualifiedCount) {
                 const msg = `MaxConcurrent (${t.MaxConcurrent}) > qualified workers (${qualifiedCount})`;
