@@ -1,36 +1,44 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Data Alchemist 🧪
+Data Alchemist is a React app for managing, validating, and prioritizing datasets (Clients, Workers, Tasks) in optimization and scheduling. It offers an easy-to-use interface for uploading data, defining rules, and setting priorities.
 
-## Getting Started
+## Key Features
+Data Handling: Upload CSV/XLSX files, view and edit data in an interactive grid with filtering and sorting.
 
-First, run the development server:
+Validation: Automated checks for data integrity within datasets and across them. Errors are highlighted for quick fixes.
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+Rule Creation: Define rules like co-run tasks, slot restrictions, load limits, phase windows, pattern matching, and precedence orders.
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+Prioritization: Adjust weights for client priority, fairness, fulfillment, idle time, and overload avoidance. Apply preset profiles for quick setup.
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+Export: Download all data (Clients, Workers, Tasks, Rules, Weights) as a single ZIP file.
+ 
+### Get Started
+Clone: git clone <your-repository-url>
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+Install: cd data-alchemist && npm install (or yarn install)
 
-## Learn More
+Run: npm run dev (or yarn dev)
+Open http://localhost:3000 in your browser.
 
-To learn more about Next.js, take a look at the following resources:
+### How to Use
+Upload: In the "Data" tab, upload your clients.csv, workers.csv, and tasks.csv (or .xlsx) files.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+Review & Edit: View your data in the grid. Filter, sort, and directly edit cells. Errors are shown on the right.
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+Add Rules: Go to the "Rules" tab. Choose a rule type, enter details, and click "Add Rule".
 
-## Deploy on Vercel
+Set Priorities: In the "Priorities" tab, use sliders to adjust weights or apply a preset.
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+Export: Click "Export All (ZIP)" to download your complete project data.
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+### Tech Stack
+React.js & Next.js (App Router): Front-end framework.
+
+Tailwind CSS: Styling.
+
+Lucide React: Icons.
+
+PapaParse: CSV parsing.
+
+JSZip: ZIP file generation.
+
