@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useMemo, useEffect } from 'react';
+import {useState, useMemo, useEffect, useId} from 'react';
 import Papa from 'papaparse';
 import JSZip from 'jszip';
 import { UploadCloud, Download, CheckCircle, XCircle, ChevronUp, ChevronDown } from 'lucide-react'; // Import Lucide icons
@@ -12,32 +12,38 @@ import { UploadCloud, Download, CheckCircle, XCircle, ChevronUp, ChevronDown } f
  * A reusable file upload component with drag-and-drop support.
  * @param onFileAccepted A callback function that is called with the accepted file.
  */
-const FileUploader = ({ onFileAccepted }: { onFileAccepted: (file: File) => void }) => (
-    <label
-        htmlFor="fileInput"
-        className="flex flex-col items-center justify-center p-6 border-2 border-dashed border-gray-300 rounded-xl text-center cursor-pointer hover:border-blue-500 hover:bg-blue-50 transition-all duration-300 transform hover:scale-105 shadow-sm"
-        onDrop={(e) => {
-            e.preventDefault();
-            const file = e.dataTransfer.files && e.dataTransfer.files[0];
-            if (file) onFileAccepted(file);
-        }}
-        onDragOver={(e) => e.preventDefault()}
-    >
-        <UploadCloud className="mx-auto h-12 w-12 text-blue-400 mb-3 animate-bounce-slow" />
-        <input
-            type="file"
-            className="hidden"
-            id="fileInput"
-            onChange={(e) => {
-                const file = e.target.files && e.target.files[0];
+const FileUploader = ({ onFileAccepted }: { onFileAccepted: (file: File) => void }) => {
+    // Generate a unique ID for this instance of the component
+    const uniqueId = useId();
+
+    return (
+        <label
+            htmlFor={`fileInput-${uniqueId}`} // Use the unique ID here
+            className="flex flex-col items-center justify-center p-6 border-2 border-dashed border-gray-300 rounded-xl text-center cursor-pointer hover:border-blue-500 hover:bg-blue-50 transition-all duration-300 transform hover:scale-105 shadow-sm"
+            onDrop={(e) => {
+                e.preventDefault();
+                const file = e.dataTransfer.files && e.dataTransfer.files[0];
                 if (file) onFileAccepted(file);
             }}
-            accept=".csv, .xlsx"
-        />
-        <span className="text-blue-700 font-semibold text-lg">Click to upload or drag & drop</span>
-        <span className="text-gray-500 text-sm mt-1">.csv, .xlsx files accepted</span>
-    </label>
-);
+            onDragOver={(e) => e.preventDefault()}
+        >
+            {/* Lucide-react is assumed to be available for icons */}
+            <UploadCloud className="mx-auto h-12 w-12 text-blue-400 mb-3 animate-bounce-slow" />
+            <input
+                type="file"
+                className="hidden"
+                id={`fileInput-${uniqueId}`} // Use the unique ID here
+                onChange={(e) => {
+                    const file = e.target.files && e.target.files[0];
+                    if (file) onFileAccepted(file);
+                }}
+                accept=".csv, .xlsx"
+            />
+            <span className="text-blue-700 font-semibold text-lg">Click to upload or drag & drop</span>
+            <span className="text-gray-500 text-sm mt-1">.csv, .xlsx files accepted</span>
+        </label>
+    );
+};
 
 /**
  * Parses a CSV file using PapaParse.
@@ -342,6 +348,7 @@ export default function DataRulesPrioritiesPage() {
     const [clients, setClients] = useState<any[]>([]);
     const [workers, setWorkers] = useState<any[]>([]);
     const [tasks, setTasks] = useState<any[]>([]);
+
     const [clientsErrors, setClientsErrors] = useState<string[]>([]);
     const [workersErrors, setWorkersErrors] = useState<string[]>([]);
     const [tasksErrors, setTasksErrors] = useState<string[]>([]);
@@ -379,16 +386,15 @@ export default function DataRulesPrioritiesPage() {
 
     /**
      * Runs cross-validation across all datasets.
-     * @param cData Clients data (optional, defaults to current state).
-     * @param wData Workers data (optional, defaults to current state).
-     * @param tData Tasks data (optional, defaults to current state).
+     * @param cData Clients data.
+     * @param wData Workers data.
+     * @param tData Tasks data.
      */
-    const runCrossValidation = (cData = clients, wData = workers, tData = tasks) => {
+    const runCrossValidation = (cData: any[], wData: any[], tData: any[]) => {
         const cross = crossValidateAll(cData, wData, tData);
         setCrossErrors(cross.errors);
         setCrossCellErrors(cross.detailed);
     };
-
     /**
      * Handles file acceptance and triggers validation for the specific entity type.
      * @param file The accepted File object.
@@ -421,7 +427,7 @@ export default function DataRulesPrioritiesPage() {
             setErr(res.errors);
             setCellErr(res.detailed);
         };
-
+        console.log("type",type)
         if (type === 'clients') {
             runValidation(parsed, validateClients, setClients, setClientsErrors, setClientsCellErrors);
             runCrossValidation(parsed, workers, tasks); // Re-run cross-validation with new client data
